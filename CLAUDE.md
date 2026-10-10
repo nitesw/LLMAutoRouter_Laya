@@ -7,8 +7,9 @@ overview and `docs/PLAN.md` for what to build next.
 ## Commands
 
 ```bash
-scripts/dev.sh                                              # sidecar + proxy
+bun start                                                   # sidecar + proxy + dashboard (scripts/start.ts)
 cd proxy && bun test                                        # proxy tests
+cd dashboard && bun run dev                                 # stats page on :8788
 .venv/bin/python -I scripts/check_sidecar.py                # sidecar parity + latency
 .venv/bin/python -I training/eval_router.py checkpoints/router-v1   # evaluate a checkpoint
 .venv/bin/python -I training/sweep.py                                # escalation threshold sweep

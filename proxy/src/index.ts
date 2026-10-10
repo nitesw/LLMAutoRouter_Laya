@@ -4,6 +4,7 @@ import { passthrough, relay, sendUpstream } from "./forward";
 import { logDecision } from "./log";
 import { record } from "./record";
 import { decide } from "./route";
+import { stats } from "./stats";
 
 async function handleMessages(request: Request): Promise<Response> {
   const raw = await request.text();
@@ -34,6 +35,7 @@ async function handleMessages(request: Request): Promise<Response> {
 
 async function handle(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname;
+  if (path === "/_router/stats") return Response.json(stats(), { headers: { "access-control-allow-origin": "*" } });
   if (request.method === "POST" && path === "/v1/messages") return handleMessages(request);
   if (!RECORD || request.method !== "POST") return passthrough(request);
   const raw = await request.text();

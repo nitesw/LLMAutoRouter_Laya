@@ -22,12 +22,12 @@ Each phase ends with acceptance criteria. Do not start a phase until the previou
 
 ## Phase 1 — Laya sidecar ✅ done
 
-Result: `scripts/laya-sidecar.sh` serves router-v1 on MPS; `scripts/check_sidecar.py` shows
+Result: the sidecar (now launched by `bun start`, `scripts/start.ts`) serves router-v1 on MPS; `scripts/check_sidecar.py` shows
 exact parity with `laya.load()` (max diff 0.0) and p50 56 ms / p95 80 ms.
 
 Serve `router-v1` over HTTP so the proxy can call it.
 
-- [ ] `scripts/laya-sidecar.sh`:
+- [x] Sidecar launch (originally `scripts/laya-sidecar.sh`, now part of `scripts/start.ts`):
   ```bash
   LAYA_EXTRA_MODELS='{"router": "./checkpoints/router-v1"}' \
   LAYA_PORT=8765 LAYA_PRELOAD=1 \
@@ -123,7 +123,7 @@ multi-step task with tool use; continuations never switch model mid-turn; routin
 
 ## Phase 3 — Wire into Claude Code
 
-- [ ] `scripts/dev.sh` starts the sidecar and the proxy together.
+- [x] `bun start` (`scripts/start.ts`) starts the sidecar, the proxy and the dashboard together.
 - [ ] Use it: `ANTHROPIC_BASE_URL=http://localhost:8787 claude`, with Opus selected in Claude Code.
   The proxy can only route *down* from the requested model.
 - [ ] `bun run stats` summarizes `logs/routing.jsonl`: share per model, overrides, fallbacks, and

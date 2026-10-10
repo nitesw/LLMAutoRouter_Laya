@@ -8,7 +8,7 @@ decision engine (a ~421M-parameter encoder, not an LLM). It reads a prompt and r
 probability for each model tier in ~50–100 ms on a Mac. We fine-tuned it on real Claude Code
 prompts so it learns what "hard" means for this user's work.
 
-> **Status:** router model trained and evaluated. Proxy not built yet — see [docs/PLAN.md](docs/PLAN.md).
+> **Status:** working end to end (router, proxy, dashboard). Next steps in [docs/PLAN.md](docs/PLAN.md).
 
 ## How it works
 
@@ -66,6 +66,7 @@ Full experiment log: [docs/RESULTS.md](docs/RESULTS.md).
 | `checkpoints/router-v1/` | **Production router** (not in git) |
 | `checkpoints/router-v2/` | Retrained on restyled synthetic data; kept for comparison (not in git) |
 | `laya/` | Clone of the Laya repo, incl. `laya-ts` (TypeScript/ONNX runtime) (not in git) |
+| `dashboard/` | Local stats page (`bun run dev` → :8788) |
 | `docs/` | Plan, results, decisions |
 
 `data/`, `checkpoints/`, `kaggle/*.csv|zip` and `laya/` are git-ignored: they hold private prompts
@@ -73,18 +74,50 @@ or large binaries.
 
 ## Setup
 
+Needs [Bun](https://bun.sh), [uv](https://docs.astral.sh/uv/) and Python 3.12.
+
 ```bash
 git clone --depth 1 https://github.com/NandhaKishorM/laya.git
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -e ./laya
+uv pip install --python .venv/bin/python -e "./laya[serve]"
+bun install                      # installs proxy/ and dashboard/ too
 ```
 
-Always run Python with `-I` — the `laya/` clone has the same name as the package and shadows it:
+You also need a trained checkpoint in `checkpoints/router-v1/` (see Retraining).
+
+## Run
+
+```bash
+bun start
+```
+
+That starts the Laya sidecar (:8765), waits until the model is loaded, then starts the router
+proxy (:8787) and the stats dashboard (:8788). Ctrl+C stops all three. In another terminal:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:8787 claude
+```
+
+Start a prompt with `>opus`, `>sonnet` or `>haiku` to force a model. Set `ROUTER_THRESHOLD`
+(default 0.8) to trade Opus usage against safety.
+
+Always run Python with `-I`, because the `laya/` clone has the same name as the package and
+shadows it:
 
 ```bash
 .venv/bin/python -I training/eval_router.py checkpoints/router-v1   # accuracy + confusion matrix
 .venv/bin/python -I training/sweep.py                                # threshold trade-off table
+bun run test                                                         # proxy tests
 ```
+
+## Dashboard
+
+A small local stats page (Vite + React + Tailwind) at http://localhost:8788, started by
+`bun start`. It reads the proxy's routing log through `GET /_router/stats`.
+
+It shows the share of prompts per model, the share of all API requests (tool steps included), a
+rough cost estimate against all-Opus, Laya latency, a per-day breakdown and your recent prompts.
+Everything stays on your machine.
 
 ## Retraining
 

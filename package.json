@@ -1,0 +1,11 @@
+{
+  "name": "llm-auto-router",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun scripts/start.ts",
+    "sidecar": "bun scripts/start.ts --only sidecar",
+    "test": "cd proxy && bun test",
+    "postinstall": "cd proxy && bun install && cd ../dashboard && bun install"
+  }
+}
