@@ -140,14 +140,53 @@ fresh prompts.
 
 Real routing logs plus the user's corrections make better training data than synthetic prompts.
 
-- [ ] `bun run review`: walk recent decisions and mark each one `ok`, `too weak` or `too strong`.
-  Also count every `>opus` override as a "too weak" signal.
-- [ ] Export the reviewed rows to the training format, run the scrub, retrain on Kaggle, and evaluate.
+- [x] Feedback buttons in the dashboard: each recent prompt has `H / S / O` buttons meaning "this
+  should have used X". Clicks go to `logs/feedback.jsonl` with the exact Laya input (`state`) and
+  the last assistant message (`prevAssistant`). The latest click per prompt wins.
+- [x] `training/export_feedback.py` writes `data/feedback.csv` (`text,tier`, same format as training).
+- [ ] **Retrain trigger:** ~150–200 feedback clicks. Not before. With fewer, the model learns noise.
+- [ ] **Training data for v3:**
+  - the feedback rows (real labels from the user);
+  - the old training set **relabeled** with a stricter rubric, "would Haiku handle this fine?". The
+    first labeler read only ~200 characters per prompt and leaned toward Sonnet (64% of labels).
+    That is why "done" and "add some text to X.md" go to Sonnet with P ≈ 0.85;
+  - count every `>opus` / `>haiku` override as a label too.
+- [ ] Scrub, upload, retrain on Kaggle, then run `eval_router.py` and `sweep.py`.
 - [ ] **Eval gate.** A new checkpoint replaces v1 only if, at `c = 0.8` on the frozen test set,
   its too-weak rate is ≤ 4.4% **and** its Opus share is ≤ 20%. It also has to do no worse on a
   fresh slice of reviewed real prompts.
 - [ ] Also track how many real prompts have been reviewed. Once there are ~500, they become a second,
   more trustworthy test set.
+
+---
+
+## Open problem — acknowledgement prompts ("done", "ok", "continue", "thanks")
+
+Not scheduled. Revisit after a few days of feedback data.
+
+**Why it's hard.** A short acknowledgement says nothing about difficulty on its own. Its meaning
+depends on the conversation:
+- "done" mid-task, after Claude asked the user to test something, means the work continues. A big
+  Opus rewrite should stay on Opus.
+- "done" when the work is finished means whatever comes next is probably simple, so drop to Haiku
+  or Sonnet.
+- "done" can also start the next step, which may be harder than the current one. A Haiku
+  conversation might move on to a rewrite that needs Opus.
+
+So neither "acknowledgements → Haiku" nor "acknowledgements keep the previous model" is right.
+Both were considered and rejected.
+
+**Candidate direction.** Give Laya an overview of the conversation, not just the previous user
+prompt: the first user goal, Claude's last message, and possibly the model in use. Laya then judges
+*the work that comes next*, not the word "done". This needs a new input format (so new training data
+in that format) and a retrain.
+
+**Data already being collected for it:**
+- every routing row logs `prevAssistant` (Claude's last message, ≤300 chars) and `state`;
+- feedback clicks on short prompts show what the user actually wanted.
+
+Before designing anything, look at those rows: how often acknowledgements appear, and how often the
+router got them wrong.
 
 ---
 
@@ -158,7 +197,42 @@ Real routing logs plus the user's corrections make better training data than syn
   for the whole turn, the same as the model.
 - [ ] Labels come from the Phase 4 reviews. The user's history does not record past effort settings.
 
-## Phase 6 — Optional
+## Phase 6 — Multi-agent routing (future idea, not scheduled)
+
+**Goal.** One router decides not just Haiku vs Sonnet vs Opus, but which coding agent and model to use:
+
+| Agent | Models / knobs |
+|---|---|
+| Claude Code | Haiku / Sonnet / Opus (+ effort) |
+| Gemini CLI / Antigravity (Google) | Gemini, low / high thinking. The user's view: low for small fast tasks, high for big implementation chunks |
+| Codex CLI / app (OpenAI) | OpenAI coding models, low / medium / high reasoning |
+
+**Option A: model-level (other models inside Claude Code).** The proxy translates Anthropic-format
+requests, tool calls included, into Gemini or OpenAI APIs and back.
+- *For:* one app, routing per message.
+- *Against:* Claude Code's prompts and tools are tuned for Claude, so other models may run its tool
+  loop worse. It needs separate API keys and billing outside the Claude subscription. Format
+  translation is a lot of surface area.
+
+**Option B: agent-level (pick the app). This is the preferred direction.** A single "front door"
+command takes the task, Laya picks agent + model + effort, and the router launches that CLI
+(`claude`, `gemini`, `codex`) with the matching flags.
+- *For:* each agent runs its own model the way it was designed. It's simpler and more robust.
+- *Against:* decisions are per task, not per message, and conversation context doesn't move between
+  agents.
+
+**Open questions before building:**
+- **Which agent is better for which kind of task?** Neither the user nor the router knows yet. Collect
+  evidence first, by using all three and logging outcomes and corrections, the same way as the
+  feedback buttons.
+- How each CLI selects model and effort from the command line (verify the current flags for each tool).
+- Auth and billing for each provider (subscriptions vs API keys).
+- What Laya's input looks like for "pick an agent", and how to get labels: likely a new question,
+  `agent: claude | gemini | codex`, trained on logged outcomes.
+
+---
+
+## Phase 7 — Optional
 
 - Drop the Python sidecar. Export `router-v1` to ONNX (`laya/laya-ts/scripts/export_onnx.py`) and
   run it inside the Bun process with `laya-ts`, then verify the probabilities match.

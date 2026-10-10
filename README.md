@@ -98,8 +98,10 @@ proxy (:8787) and the stats dashboard (:8788). Ctrl+C stops all three. In anothe
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
 ```
 
-Start a prompt with `>opus`, `>sonnet` or `>haiku` to force a model. Set `ROUTER_THRESHOLD`
-(default 0.8) to trade Opus usage against safety.
+Start a prompt with `>opus`, `>sonnet` or `>haiku` to force a model. Settings (env vars):
+`ROUTER_THRESHOLD` (default 0.8) trades Opus usage against safety; `FALLBACK_TIER` (default
+`sonnet`) is used only if Laya is down; `KEEP_WARM_MS` (default 0, off) pings Laya to avoid the
+~1 s cold call, at the cost of GPU load.
 
 Always run Python with `-I`, because the `laya/` clone has the same name as the package and
 shadows it:
@@ -117,6 +119,8 @@ A small local stats page (Vite + React + Tailwind) at http://localhost:8788, sta
 
 It shows the share of prompts per model, the share of all API requests (tool steps included), a
 rough cost estimate against all-Opus, Laya latency, a per-day breakdown and your recent prompts.
+Each recent prompt has `H / S / O` buttons: click the model it *should* have used. Those clicks are
+saved to `logs/feedback.jsonl` and become training data (`training/export_feedback.py`).
 Everything stays on your machine.
 
 ## Retraining

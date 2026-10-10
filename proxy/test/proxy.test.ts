@@ -3,12 +3,14 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 process.env.KEEP_WARM_MS = "0";
+process.env.LAYA_TIMEOUT_MS = "1000"; // short so the "sidecar down" path stays fast
 
 // One mock server plays both Anthropic (/v1/messages*) and the Laya sidecar (/v1/systemone).
 let mock: ReturnType<typeof Bun.serve>;
 let upstreamCalls: { model: string; auth: string | null; body: any }[] = [];
 let layaProbs: any = { none: 0, haiku: 0.95, sonnet: 0.04, opus: 0.01 };
 let layaDelayMs = 0;
+let layaStatus = 200;
 let rejectModel: string | null = null;
 const logDir = mkdtempSync(tmpdir() + "/router-test-") + "/";
 
@@ -20,6 +22,7 @@ beforeAll(() => {
       const body = await req.json().catch(() => null);
       if (path === "/v1/systemone") {
         await Bun.sleep(layaDelayMs);
+        if (layaStatus !== 200) return new Response("boom", { status: layaStatus });
         return Response.json({ answers: { label: { probabilities: layaProbs } } });
       }
       upstreamCalls.push({ model: body?.model, auth: req.headers.get("authorization"), body });
@@ -38,7 +41,7 @@ beforeAll(() => {
   process.env.LOG_DIR = logDir;
 });
 afterAll(() => mock.stop());
-beforeEach(() => { upstreamCalls = []; layaDelayMs = 0; rejectModel = null; layaProbs = { none: 0, haiku: 0.95, sonnet: 0.04, opus: 0.01 }; });
+beforeEach(() => { upstreamCalls = []; layaDelayMs = 0; layaStatus = 200; rejectModel = null; layaProbs = { none: 0, haiku: 0.95, sonnet: 0.04, opus: 0.01 }; });
 
 const tools = [{ name: "Read" }];
 const call = async (body: any, session = "s1") => {
@@ -84,11 +87,19 @@ test("background requests (no tools) pass through untouched", async () => {
   expect(upstreamCalls[0].model).toBe("claude-opus-5-5");
 });
 
-test("slow sidecar fails open to the original model", async () => {
-  layaDelayMs = 1500;
-  const res = await call(fresh("fix the typo"), "s5");
-  expect(res.status).toBe(200);
-  expect(upstreamCalls[0].model).toBe("claude-opus-5-5");
+test("a slow (cold) sidecar is waited for: Laya still decides", async () => {
+  layaDelayMs = 500;
+  await call(fresh("fix the typo"), "s5");
+  expect(upstreamCalls[0].model).toBe("claude-haiku-5-5");
+  expect(lastLog().fallbackReason).toBeUndefined();
+});
+
+test("a dead sidecar falls back to Sonnet, never Opus", async () => {
+  layaStatus = 500;
+  await call(fresh("fix the typo"), "s5b");
+  layaStatus = 200; layaDelayMs = 1500; // past the 1 s test timeout
+  await call(fresh("fix the typo"), "s5c");
+  expect(upstreamCalls.map((c) => c.model)).toEqual(["claude-sonnet-5-5", "claude-sonnet-5-5"]);
   expect(lastLog().fallbackReason).toContain("laya");
 });
 
@@ -104,4 +115,28 @@ test("prompt-suggestion requests pass through and do not touch the sticky tier",
   await call(fresh("fix the typo"), "s7");
   await call(fresh("[SUGGESTION MODE: Suggest what the user might naturally type next]"), "s7");
   expect(upstreamCalls.map((c) => c.model)).toEqual(["claude-haiku-5-5", "claude-opus-5-5"]);
+});
+
+test("away-recap background requests pass through", async () => {
+  await call(fresh("The user stepped away and is coming back. Recap in under 40 words."), "s8");
+  expect(upstreamCalls[0].model).toBe("claude-opus-5-5");
+});
+
+test("feedback stores the exact Laya input and shows in stats", async () => {
+  await call({ model: "claude-opus-5-5", tools, messages: [
+    { role: "user", content: "rename notes.md" },
+    { role: "assistant", content: [{ type: "text", text: "Renamed. Test it and say done." }] },
+    { role: "user", content: [{ type: "text", text: "add some text to notes.md" }] },
+  ] }, "s11");
+  const { app } = await import("../src/index");
+  const id = lastLog().id;
+  const post = (body: any) => app.handle(new Request("http://proxy/_router/feedback", { method: "POST", body: JSON.stringify(body) }));
+  expect((await post({ id, tier: "nope" })).status).toBe(400);
+  expect((await post({ id: "missing", tier: "haiku" })).status).toBe(400);
+  expect((await post({ id, tier: "sonnet" })).status).toBe(200);
+  expect((await post({ id, tier: "haiku" })).status).toBe(200);
+  const fb = JSON.parse(readFileSync(logDir + "feedback.jsonl", "utf8").trim().split("\n").at(-1)!);
+  expect(fb).toMatchObject({ id, tier: "haiku", state: "[previous: rename notes.md]\nadd some text to notes.md", prevAssistant: "Renamed. Test it and say done." });
+  const stats = await (await app.handle(new Request("http://proxy/_router/stats"))).json();
+  expect(stats.recent.find((r: any) => r.id === id).feedback).toBe("haiku");
 });

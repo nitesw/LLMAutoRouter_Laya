@@ -54,7 +54,7 @@ and the prompt cache stays warm.
 Effort/thinking-level routing is a second Laya question for later (Phase 5). The training data has
 no record of past effort settings, so labels must come from real-traffic reviews.
 
-## 12. Keep the sidecar warm
+## 12. Keep the sidecar warm (superseded by 15)
 In the first real session, every Laya call timed out at 300 ms. On MPS a cold call after a few
 seconds idle takes 150 ms to 1 s, while a warm one takes ~40–70 ms. The proxy now pings the sidecar
 every second while Claude Code has been active in the last 10 minutes, and the timeout is 1 s as a
@@ -68,3 +68,17 @@ Claude Code's prompt-suggestion feature sends main-loop-shaped requests whose te
 After the first working sessions the user switched to c = 0.8: 20% of prompts to Opus and 4.4%
 routed too weak (19/30 hard prompts reach Opus), at ~35% of all-Opus cost. `ROUTER_THRESHOLD`
 overrides it without a code change.
+
+## 15. No keep-warm; Laya always decides
+Keep-warm pings held the GPU at 50–70%. The user would rather wait ~1 s on a cold call. The model
+warms once at startup, there are no pings (`KEEP_WARM_MS=0`), and the timeout is 10 s, so a cold
+Laya still makes the decision itself.
+
+## 16. Fallback is Sonnet, and only when Laya is down
+A Laya failure (crash, error, timeout) routes to `FALLBACK_TIER`, which defaults to Sonnet. It is
+never Opus by default. A slow or cold Laya is not a failure.
+
+## 17. Feedback buttons are the source of real labels
+The router under-uses Haiku because the original labels lean toward Sonnet. Instead of more
+synthetic data, the user labels real prompts from the dashboard (`H / S / O`). The next retrain
+waits for ~150–200 clicks. Acknowledgement routing stays an open problem (`docs/PLAN.md`).

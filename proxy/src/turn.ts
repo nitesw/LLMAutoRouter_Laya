@@ -27,6 +27,16 @@ export function typedText(m: Message): string {
     .trim();
 }
 
+/** Text of the last assistant message before messages[index] (data for future ack routing). */
+export function lastAssistantText(messages: Message[], index: number): string {
+  for (let j = index - 1; j >= 0; j--) {
+    if (messages[j]?.role !== "assistant") continue;
+    const text = blocksOf(messages[j]).filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 export type Turn =
   | { kind: "fresh"; index: number; prompt: string; prev: string }
   | { kind: "continuation" };

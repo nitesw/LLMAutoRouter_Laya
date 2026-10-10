@@ -24,6 +24,11 @@ export async function askLaya(state: string, timeoutMs = LAYA_TIMEOUT_MS): Promi
 let lastActivity = 0;
 let warming = false;
 
+/** Load the model onto the GPU once at startup so the first prompt is fast. */
+export function warmUp() {
+  askLaya("ok", 60_000).catch(() => {});
+}
+
 /** Mark Claude Code activity; pings the sidecar every KEEP_WARM_MS until idle for KEEP_WARM_IDLE_MS. */
 export function touchKeepWarm() {
   lastActivity = Date.now();

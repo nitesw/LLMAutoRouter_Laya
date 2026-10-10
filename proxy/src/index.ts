@@ -3,8 +3,9 @@ import { MODELS, PORT, RECORD, THRESHOLD } from "./config";
 import { passthrough, relay, sendUpstream } from "./forward";
 import { logDecision } from "./log";
 import { record } from "./record";
+import { warmUp } from "./laya";
 import { decide } from "./route";
-import { stats } from "./stats";
+import { saveFeedback, stats } from "./stats";
 
 async function handleMessages(request: Request): Promise<Response> {
   const raw = await request.text();
@@ -29,13 +30,17 @@ async function handleMessages(request: Request): Promise<Response> {
   }
   if (RECORD) record(request, body, res.status);
   const { eligible, ...rest } = d;
-  logDecision({ ...rest, originalModel, finalModel: retried ? originalModel : finalModel, status: res.status, retried, upstreamError });
+  logDecision({ id: crypto.randomUUID(), ...rest, originalModel, finalModel: retried ? originalModel : finalModel, status: res.status, retried, upstreamError });
   return relay(res);
 }
 
 async function handle(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname;
-  if (path === "/_router/stats") return Response.json(stats(), { headers: { "access-control-allow-origin": "*" } });
+  if (path === "/_router/stats") return Response.json(stats());
+  if (path === "/_router/feedback" && request.method === "POST") {
+    const ok = saveFeedback(await request.json().catch(() => null));
+    return Response.json({ ok }, { status: ok ? 200 : 400 });
+  }
   if (request.method === "POST" && path === "/v1/messages") return handleMessages(request);
   if (!RECORD || request.method !== "POST") return passthrough(request);
   const raw = await request.text();
@@ -50,5 +55,6 @@ export const app = new Elysia().all("*", ({ request }) => handle(request), { par
 
 if (import.meta.main) {
   app.listen(PORT);
+  warmUp();
   console.log(`router proxy on http://localhost:${PORT}  threshold ${THRESHOLD}${RECORD ? "  (recording shapes)" : ""}`);
 }

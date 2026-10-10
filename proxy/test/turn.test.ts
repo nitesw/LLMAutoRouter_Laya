@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classifyTurn, editFirstTyped, formatState } from "../src/turn";
+import { classifyTurn, editFirstTyped, formatState, lastAssistantText } from "../src/turn";
 
 const R = "<system-reminder>ctx</system-reminder>";
 
@@ -47,4 +47,16 @@ test("editFirstTyped changes only the typed block", () => {
   const msgs: any = [{ role: "user", content: [{ type: "text", text: R }, { type: "text", text: ">opus go" }] }];
   editFirstTyped(msgs, 0, (t) => t.replace(">opus ", ""));
   expect(msgs[0].content).toEqual([{ type: "text", text: R }, { type: "text", text: "go" }]);
+});
+
+test("lastAssistantText finds the latest assistant text before the prompt", () => {
+  const msgs: any = [
+    { role: "assistant", content: [{ type: "text", text: "old" }] },
+    { role: "user", content: "x" },
+    { role: "assistant", content: [{ type: "tool_use", id: "1" }] },
+    { role: "assistant", content: [{ type: "text", text: "please test and say done" }] },
+    { role: "user", content: "done" },
+  ];
+  expect(lastAssistantText(msgs, 4)).toBe("please test and say done");
+  expect(lastAssistantText(msgs, 0)).toBe("");
 });

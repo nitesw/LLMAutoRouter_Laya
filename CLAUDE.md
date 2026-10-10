@@ -40,8 +40,10 @@ cd dashboard && bun run dev                                 # stats page on :878
   `"[previous: <previous typed user prompt, ≤200 chars>]\n<prompt>"` (prefix only when there is a
   previous prompt) — the format `data/test.csv` uses and the reported numbers come from
   (`proxy/src/turn.ts::formatState`). Changing it invalidates the results.
-- **Fail open.** Any router error or timeout forwards the request with the model Claude Code
-  asked for.
+- **Laya always decides.** A cold call (~1 s) is waited for, with a 10 s timeout. Only a dead or
+  erroring sidecar falls back, to `FALLBACK_TIER` (Sonnet), never Opus. No keep-warm pings by
+  default because they load the GPU. A 400 from a downgraded model still retries once with the
+  original model.
 - Threshold history: started at 0.9, the user switched to 0.8 (20% Opus, 4.4% too weak).
 - Report results honestly: say when a change is within noise (293 test prompts ≈ ±3 points).
 

@@ -15,7 +15,11 @@ type Stats = {
   layaMs: { p50: number | null; p95: number | null };
   costVsAllOpus: number | null;
   daily: ({ day: string } & Counts)[];
-  recent: { ts: string; model: Tier; override: boolean; opus: number | null; prompt: string }[];
+  feedback: { labeled: number; agreed: number };
+  recent: {
+    id: string; ts: string; model: Tier; override: boolean; fallback: boolean;
+    opus: number | null; prompt: string; feedback: Tier | null;
+  }[];
 };
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "–");
@@ -52,6 +56,27 @@ function ShareBar({ counts }: { counts: Counts }) {
   );
 }
 
+// "This prompt should have gone to <tier>". Clicks become training labels.
+function FeedbackButtons({ id, value, onSaved }: { id: string; value: Tier | null; onSaved: () => void }) {
+  const save = (tier: Tier) =>
+    fetch("/_router/feedback", { method: "POST", body: JSON.stringify({ id, tier }) }).then(onSaved);
+  return (
+    <span className="flex shrink-0 gap-1">
+      {TIERS.map((t) => (
+        <button
+          key={t}
+          onClick={() => save(t)}
+          title={`should be ${t}`}
+          className="size-6 rounded-md border border-[var(--border)] text-xs font-medium uppercase transition-colors hover:border-[var(--muted)]"
+          style={value === t ? { background: color(t), borderColor: color(t), color: "white" } : undefined}
+        >
+          {t[0]}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 function Daily({ days }: { days: Stats["daily"] }) {
   const max = Math.max(1, ...days.map((d) => d.haiku + d.sonnet + d.opus));
   return (
@@ -77,12 +102,13 @@ export function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState(false);
 
+  const load = () =>
+    fetch("/_router/stats")
+      .then((r) => r.json())
+      .then((s) => { setStats(s); setError(false); })
+      .catch(() => setError(true));
+
   useEffect(() => {
-    const load = () =>
-      fetch("/_router/stats")
-        .then((r) => r.json())
-        .then((s) => { setStats(s); setError(false); })
-        .catch(() => setError(true));
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
@@ -132,20 +158,25 @@ export function App() {
             <div>Overrides (&gt;opus etc.): <span className="text-[var(--foreground)]">{stats.overrides}</span></div>
             <div>Fallbacks to Opus: <span className="text-[var(--foreground)]">{stats.fallbacks}</span></div>
             <div>Retries after 400: <span className="text-[var(--foreground)]">{stats.retries}</span></div>
+            <div>
+              Labeled by you: <span className="text-[var(--foreground)]">{stats.feedback.labeled}</span>
+              {stats.feedback.labeled > 0 && <> · router agreed {pct(stats.feedback.agreed, stats.feedback.labeled)}</>}
+            </div>
           </div>
         </Card>
 
         <Card className="min-w-0">
-          <CardTitle>Recent prompts</CardTitle>
+          <CardTitle>Recent prompts · mark what each should have used</CardTitle>
           <ul className="divide-y divide-[var(--border)] text-sm">
             {stats.recent.map((r) => (
-              <li key={r.ts} className="flex items-center gap-3 py-2">
+              <li key={r.id} className="flex items-center gap-3 py-2">
                 <span className="size-2.5 shrink-0 rounded-full" style={{ background: color(r.model) }} title={r.model} />
                 <span className="w-14 shrink-0">{r.model}</span>
                 <span className="min-w-0 flex-1 truncate" title={r.prompt}>{r.prompt}</span>
                 <span className="shrink-0 tabular-nums text-xs text-[var(--muted)]">
-                  {r.override ? "override" : r.opus == null ? "" : `P(opus) ${r.opus.toFixed(2)}`}
+                  {r.override ? "override" : r.fallback ? "fallback" : r.opus == null ? "" : `P(opus) ${r.opus.toFixed(2)}`}
                 </span>
+                <FeedbackButtons id={r.id} value={r.feedback} onSaved={load} />
               </li>
             ))}
           </ul>
