@@ -139,4 +139,13 @@ test("feedback stores the exact Laya input and shows in stats", async () => {
   expect(fb).toMatchObject({ id, tier: "haiku", state: "[previous: rename notes.md]\nadd some text to notes.md", prevAssistant: "Renamed. Test it and say done." });
   const stats = await (await app.handle(new Request("http://proxy/_router/stats"))).json();
   expect(stats.recent.find((r: any) => r.id === id).feedback).toBe("haiku");
+
+  // tags merge with the existing tier instead of replacing the row
+  expect((await post({ id, tags: ["bogus"] })).status).toBe(400);
+  expect((await post({ id, tags: ["continuation", "cant-tell"] })).status).toBe(200);
+  const tagged = JSON.parse(readFileSync(logDir + "feedback.jsonl", "utf8").trim().split("\n").at(-1)!);
+  expect(tagged).toMatchObject({ id, tier: "haiku", tags: ["continuation", "cant-tell"] });
+  const stats2 = await (await app.handle(new Request("http://proxy/_router/stats"))).json();
+  expect(stats2.recent.find((r: any) => r.id === id)).toMatchObject({ feedback: "haiku", tags: ["continuation", "cant-tell"] });
+  expect(stats2.feedback.labeled).toBe(1);
 });

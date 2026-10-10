@@ -121,6 +121,9 @@ It shows the share of prompts per model, the share of all API requests (tool ste
 rough cost estimate against all-Opus, Laya latency, a per-day breakdown and your recent prompts.
 Each recent prompt has `H / S / O` buttons: click the model it *should* have used. Those clicks are
 saved to `logs/feedback.jsonl` and become training data (`training/export_feedback.py`).
+Clicking a row opens a side sheet with your prompt, Claude's last message, the routing probabilities and reason tags (`continuation`, `needs-context`, `trivial`, `cant-tell`, `cancelled`).
+Tags are for your own analysis, except `cant-tell` (the prompt alone can't decide it) and
+`cancelled` (you revoked the prompt): the export skips those rows.
 Everything stays on your machine.
 
 ## Retraining

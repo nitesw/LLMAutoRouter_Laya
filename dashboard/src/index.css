@@ -27,3 +27,7 @@ body {
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
+/* Tailwind v4 resets buttons to the default cursor */
+button:not(:disabled) {
+  cursor: pointer;
+}
