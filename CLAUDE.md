@@ -7,8 +7,11 @@ overview and `docs/PLAN.md` for what to build next.
 ## Commands
 
 ```bash
-.venv/bin/python -I eval_router.py checkpoints/router-v1   # evaluate a checkpoint
-.venv/bin/python -I sweep.py                                # escalation threshold sweep
+scripts/dev.sh                                              # sidecar + proxy
+cd proxy && bun test                                        # proxy tests
+.venv/bin/python -I scripts/check_sidecar.py                # sidecar parity + latency
+.venv/bin/python -I training/eval_router.py checkpoints/router-v1   # evaluate a checkpoint
+.venv/bin/python -I training/sweep.py                                # escalation threshold sweep
 ```
 
 - **Always pass `-I` to Python.** The `laya/` folder (a git clone) has the same name as the
@@ -20,28 +23,30 @@ overview and `docs/PLAN.md` for what to build next.
 
 - **Private data.** `data/` and `kaggle/` hold the user's real Claude Code prompts. Never commit
   them, never print them in bulk, never send them to an external service. The only file allowed to
-  leave the machine is `kaggle/train_clean.csv`, and only after `scrub.py` plus a row-by-row privacy
+  leave the machine is `kaggle/train_clean.csv`, and only after `training/scrub.py` plus a row-by-row privacy
   review. Synthetic prompts must not contain real company, client or person names.
 - **The test set is frozen.** Never edit `data/test.csv`, never train on it, and dedupe every new
-  training row against it (normalised text match, as `merge_dataset.py` does). Results are only
+  training row against it (normalised text match, as `training/merge_dataset.py` does). Results are only
   comparable while the test set stays the same.
-- **Production checkpoint is `checkpoints/router-v1`** with threshold `c = 0.9`. `router-v2` is
+- **Production checkpoint is `checkpoints/router-v1`** with threshold `c = 0.8`. `router-v2` is
   kept only for comparison. A new checkpoint replaces v1 only if it passes the eval gate in
   `docs/PLAN.md`.
 - **Routing rule:** cheapest tier whose cumulative probability (`none+haiku`, `sonnet`, `opus`)
   reaches `c`. A `none` prediction is treated as Haiku — never skip the LLM.
-- **Overrides are rules, not ML.** `!opus` / `!sonnet` / `!haiku` at the start of a prompt force
+- **Overrides are rules, not ML.** `>opus` / `>sonnet` / `>haiku` at the start of a prompt force
   the model and are stripped. The classifier cannot follow "use opus" in plain words (tested).
-- **Input format must match training.** Laya sees
-  `"[previous: <previous user prompt, ≤120 chars>]\n<prompt, ≤300 chars>"` (the prefix only when
-  there is a previous prompt). Changing this format means retraining.
+- **Input format must match evaluation.** Laya sees
+  `"[previous: <previous typed user prompt, ≤200 chars>]\n<prompt>"` (prefix only when there is a
+  previous prompt) — the format `data/test.csv` uses and the reported numbers come from
+  (`proxy/src/turn.ts::formatState`). Changing it invalidates the results.
 - **Fail open.** Any router error or timeout forwards the request with the model Claude Code
   asked for.
+- Threshold history: started at 0.9, the user switched to 0.8 (20% Opus, 4.4% too weak).
 - Report results honestly: say when a change is within noise (293 test prompts ≈ ±3 points).
 
 ## Stack and style
 
-- Proxy: TypeScript on Bun + Elysia (to be created in `proxy/`). Laya runs as a `laya-serve`
+- Proxy: TypeScript on Bun + Elysia in `proxy/` (`bun test` there). Laya runs as a `laya-serve`
   sidecar (Python) until the `laya-ts` ONNX path replaces it.
 - Python scripts are small, single-purpose, top-level scripts with a one-line docstring;
   match that style rather than introducing frameworks.

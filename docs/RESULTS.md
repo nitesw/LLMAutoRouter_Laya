@@ -48,7 +48,7 @@ exact 70.0%, within one tier 98.0%, too weak 13.0%, and 10/30 opus prompts reach
 It's a tie with v1 on argmax and **worse for escalation** (see below). The model fits synthetic
 prompts better than real ones.
 
-## Escalation sweep (`sweep.py`)
+## Escalation sweep (`training/sweep.py`)
 
 Rule: choose the cheapest tier whose cumulative probability (`none + haiku`, `sonnet`, `opus`)
 reaches `c`. A `none` prediction is merged into Haiku. Cost uses illustrative weights

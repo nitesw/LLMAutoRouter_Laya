@@ -32,13 +32,15 @@ than on real ones (70%).
 More synthetic data (v2) did not improve real-prompt accuracy and made the probabilities worse
 for escalation (8.2% vs 3.4% too weak at c = 0.9).
 
-## 7. Threshold c = 0.9
+## 7. Threshold c = 0.9 (superseded by 14)
 The user chose c = 0.9. It sends 33% of prompts to Opus (down from ~90% today) with 3.4% routed
 too weak. The cautious end of the curve was preferred over maximum savings.
 
 ## 8. Overrides are rules
-The classifier cannot follow "use opus" phrasing (tested). The proxy handles `!opus`, `!sonnet`
-and `!haiku` prefixes with plain string matching, and strips the tag before forwarding.
+The classifier cannot follow "use opus" phrasing (tested). The proxy handles `>opus`, `>sonnet`
+and `>haiku` prefixes with plain string matching, and strips the tag before forwarding.
+The prefix was first `!`, but Claude Code treats a leading `!` as bash mode, so the prompt never
+reaches the proxy. `>` has no meaning in Claude Code's prompt box.
 
 ## 9. Never skip the LLM (for now)
 `none` predictions are routed to Haiku. Answering without a model may come later, if the logs show
@@ -51,3 +53,18 @@ and the prompt cache stays warm.
 ## 11. Effort routing deferred
 Effort/thinking-level routing is a second Laya question for later (Phase 5). The training data has
 no record of past effort settings, so labels must come from real-traffic reviews.
+
+## 12. Keep the sidecar warm
+In the first real session, every Laya call timed out at 300 ms. On MPS a cold call after a few
+seconds idle takes 150 ms to 1 s, while a warm one takes ~40–70 ms. The proxy now pings the sidecar
+every second while Claude Code has been active in the last 10 minutes, and the timeout is 1 s as a
+safety margin. CPU inference was slower (200–450 ms) and is not used.
+
+## 13. Prompt suggestions are not routed
+Claude Code's prompt-suggestion feature sends main-loop-shaped requests whose text starts with
+`[SUGGESTION MODE:`. They pass through untouched and don't change the conversation's sticky tier.
+
+## 14. Threshold lowered to c = 0.8
+After the first working sessions the user switched to c = 0.8: 20% of prompts to Opus and 4.4%
+routed too weak (19/30 hard prompts reach Opus), at ~35% of all-Opus cost. `ROUTER_THRESHOLD`
+overrides it without a code change.

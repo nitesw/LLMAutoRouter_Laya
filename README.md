@@ -15,21 +15,21 @@ prompts so it learns what "hard" means for this user's work.
 ```
 Claude Code ──ANTHROPIC_BASE_URL=http://localhost:8787──► Router proxy (Bun + Elysia)
                                                               │
-                                   1. "!opus" / "!sonnet" / "!haiku" prefix? → force that model
+                                   1. ">opus" / ">sonnet" / ">haiku" prefix? → force that model
                                    2. tool-result continuation?             → keep this turn's model
                                    3. otherwise ask Laya (laya-serve sidecar, ~60 ms)
                                                               │
-                                 cheapest tier whose cumulative P(enough) ≥ 0.9
+                                 cheapest tier whose cumulative P(enough) ≥ 0.8
                                                               │
                                 ┌─────────────────┬───────────┴───────┐
                             Haiku 5.5        Sonnet 5.5          Opus 5.5
 ```
 
-- **Overrides win.** Starting a prompt with `!opus`, `!sonnet` or `!haiku` forces that model; the
+- **Overrides win.** Starting a prompt with `>opus`, `>sonnet` or `>haiku` forces that model; the
   tag is stripped before the request is forwarded. The classifier does *not* understand
   "use opus" in plain words — that is handled by these rules, not by Laya.
-- **Escalation threshold `c = 0.9`.** The router picks the cheapest tier whose cumulative
-  probability of being sufficient reaches 0.9. When unsure, it escalates.
+- **Escalation threshold `c = 0.8`.** The router picks the cheapest tier whose cumulative
+  probability of being sufficient reaches 0.8 (set `ROUTER_THRESHOLD` to change it). When unsure, it escalates.
 - **Never skips the LLM.** Laya can predict a `none` tier (trivial acknowledgements); for now it is
   treated as Haiku.
 - **Fail-open.** If Laya is down or slow, the request goes to the model Claude Code asked for.
@@ -44,8 +44,8 @@ numbers as directional.
 | Always Opus (before) | 100% | 0% | 30/30 | 100% |
 | Always Sonnet | 0% | 10.2% | 0/30 | 20% |
 | Laya zero-shot (not fine-tuned) | — | 59% | — | — |
-| **router-v1, c = 0.9 (chosen)** | **33%** | **3.4%** | **21/30** | **46%** |
-| router-v1, c = 0.8 | 20% | 4.4% | 19/30 | 35% |
+| router-v1, c = 0.9 | 33% | 3.4% | 21/30 | 46% |
+| **router-v1, c = 0.8 (current)** | **20%** | **4.4%** | **19/30** | **35%** |
 
 \* Illustrative weights Haiku 1 : Sonnet 4 : Opus 20. The Opus share is price-independent.
 
@@ -55,14 +55,13 @@ Full experiment log: [docs/RESULTS.md](docs/RESULTS.md).
 
 | Path | What |
 |---|---|
-| `extract_prompts.py` | Pull real prompts from `~/.claude/history.jsonl` → `data/prompts.jsonl` |
-| `build_dataset.py` | Join labels, stratified train/test split → `data/train.csv`, `data/test.csv` |
-| `scrub.py` | Strict PII/secret redaction → `kaggle/train_clean.csv` (the only file that leaves the machine) |
-| `merge_dataset.py` | Merge cleaned real prompts with restyled synthetic ones (v3 dataset) |
-| `apply_restyle.py` | Assemble restyled synthetic prompts from `data/restyle/out_*.txt` |
-| `eval_router.py` | Accuracy + confusion matrix of a checkpoint on `data/test.csv` |
-| `sweep.py` | Escalation-threshold sweep (Opus share vs. too-weak rate) |
-| `step1_eval.py`, `probe*.py` | Early sanity checks |
+| `training/extract_prompts.py` | Pull real prompts from `~/.claude/history.jsonl` → `data/prompts.jsonl` |
+| `training/build_dataset.py` | Join labels, stratified train/test split → `data/train.csv`, `data/test.csv` |
+| `training/scrub.py` | Strict PII/secret redaction → `kaggle/train_clean.csv` (the only file that leaves the machine) |
+| `training/merge_dataset.py` | Merge cleaned real prompts with restyled synthetic ones (v3 dataset) |
+| `training/apply_restyle.py` | Assemble restyled synthetic prompts from `data/restyle/out_*.txt` |
+| `training/eval_router.py` | Accuracy + confusion matrix of a checkpoint on `data/test.csv` |
+| `training/sweep.py` | Escalation-threshold sweep (Opus share vs. too-weak rate) |
 | `kaggle/train_router.ipynb` | Fine-tuning notebook (Kaggle, free T4 GPU) |
 | `checkpoints/router-v1/` | **Production router** (not in git) |
 | `checkpoints/router-v2/` | Retrained on restyled synthetic data; kept for comparison (not in git) |
@@ -83,17 +82,17 @@ uv pip install --python .venv/bin/python -e ./laya
 Always run Python with `-I` — the `laya/` clone has the same name as the package and shadows it:
 
 ```bash
-.venv/bin/python -I eval_router.py checkpoints/router-v1   # accuracy + confusion matrix
-.venv/bin/python -I sweep.py                                # threshold trade-off table
+.venv/bin/python -I training/eval_router.py checkpoints/router-v1   # accuracy + confusion matrix
+.venv/bin/python -I training/sweep.py                                # threshold trade-off table
 ```
 
 ## Retraining
 
-1. Rebuild the dataset (`build_dataset.py` → `scrub.py` → `merge_dataset.py`).
+1. Rebuild the dataset (`training/build_dataset.py` → `training/scrub.py` → `training/merge_dataset.py`).
 2. Upload `kaggle/train_clean.csv` as a **private** Kaggle dataset version.
 3. Run `kaggle/train_router.ipynb` with **Save Version → Save & Run All**, accelerator **GPU T4**,
    internet on. Check the log says `device cuda`, not `device cpu`. ~7 min.
-4. Download the output zip, unzip to `checkpoints/router-vN`, run `eval_router.py` and `sweep.py`.
-   A new checkpoint replaces v1 only if it beats it at `c = 0.9` (see the eval gate in the plan).
+4. Download the output zip, unzip to `checkpoints/router-vN`, run `training/eval_router.py` and `training/sweep.py`.
+   A new checkpoint replaces v1 only if it beats it at `c = 0.8` (see the eval gate in the plan).
 
 Training locally on Apple Silicon (MPS) works but is roughly 20× slower.

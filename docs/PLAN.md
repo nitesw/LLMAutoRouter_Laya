@@ -15,12 +15,15 @@ Each phase ends with acceptance criteria. Do not start a phase until the previou
 - [x] Strict scrub + privacy review before anything leaves the machine
 - [x] Fine-tune on Kaggle T4 → `router-v1` (68% exact, 96% within one tier)
 - [x] Add 1,325 synthetic prompts, restyle them toward the user's voice → `router-v2` (no real gain)
-- [x] Escalation threshold sweep → **v1 at `c = 0.9`**: 33% to Opus, 3.4% too weak
+- [x] Escalation threshold sweep → **v1 at `c = 0.9`**: 33% to Opus, 3.4% too weak (later lowered to 0.8: 20% / 4.4%)
 - [x] Verify the classifier cannot follow "use opus" phrasing → overrides must be rules
 
 ---
 
-## Phase 1 — Laya sidecar
+## Phase 1 — Laya sidecar ✅ done
+
+Result: `scripts/laya-sidecar.sh` serves router-v1 on MPS; `scripts/check_sidecar.py` shows
+exact parity with `laya.load()` (max diff 0.0) and p50 56 ms / p95 80 ms.
 
 Serve `router-v1` over HTTP so the proxy can call it.
 
@@ -53,15 +56,15 @@ probabilities as `laya.load()` in Python for 20 test prompts (±1e-3).
    - *Fresh prompt*: the last message is `role: user` and contains a text block.
    - *Continuation*: the last user message contains only `tool_result` blocks. That is Claude Code's
      agent loop, and it must keep the model that started the turn.
-2. **Override check (fresh prompts only).** `^\s*!(opus|sonnet|haiku)\b` in the first text block
+2. **Override check (fresh prompts only).** `^\s*>(opus|sonnet|haiku)\b` in the first text block
    → force that tier and strip the tag from the forwarded body.
 3. **Route (fresh prompts, no override).**
-   - Build the Laya input exactly like training:
-     `"[previous: " + prevUserPrompt[0:120] + "]\n" + prompt[0:300]`, prefix only when a
-     previous user prompt exists.
+   - Build the Laya input exactly like the evaluated test set:
+     `"[previous: " + prevUserPrompt[0:200] + "]\n" + prompt`, prefix only when a
+     previous user prompt exists (`proxy/src/turn.ts::formatState`).
    - Call the sidecar with a 300 ms timeout.
    - Collapse probabilities: `[none + haiku, sonnet, opus]`. Pick the cheapest tier whose
-     cumulative sum reaches `C = 0.9`.
+     cumulative sum reaches `C = 0.8`.
 4. **Sticky routing.** Store the chosen tier per conversation and reuse it for continuations.
    Switching models mid-turn throws away the prompt cache and confuses the agent loop.
 5. **Rewrite and forward.** Map the tier to a model ID from config, replace `body.model`, forward
@@ -78,7 +81,7 @@ probabilities as `laya.load()` in Python for 20 test prompts (±1e-3).
 
 ```ts
 export const MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
-export const THRESHOLD = 0.9;
+export const THRESHOLD = 0.8; // was 0.9, see DECISIONS 14
 export const LAYA_URL = "http://localhost:8765/v1/systemone";
 export const LAYA_TIMEOUT_MS = 300;
 ```
@@ -89,20 +92,26 @@ Every routed request appends one JSONL line to `logs/routing.jsonl`, which is gi
 private:
 `ts, conversationKey, turnType, override, probs, chosenTier, originalModel, finalModel, layaMs, fallbackReason, promptPreview (≤300 chars)`.
 
-### Open questions to verify against real Claude Code traffic
+### Step 0 findings (recorded 2026-10-10 with a pass-through proxy)
 
-- **Conversation key.** What stable identifier does Claude Code send? Inspect the headers and
-  `metadata` from logged requests. Fallback: a hash of the system prompt plus the first user message.
-- **Background requests.** Which requests are Claude Code's own background calls? They need a
-  pass-through rule so we don't route them.
-- **Cross-model fields.** Do any request fields (thinking or effort settings, betas) get rejected
-  by Haiku or Sonnet? This drives the retry rule in step 7.
+- **Subscription auth works through the proxy** (`authorization: Bearer`, all 200s).
+- Claude Code sends `claude-opus-5-5` (no suffix) for **every** request, background ones included.
+- Main-loop requests carry the full tool list (206 tools); background calls (titles, quota checks,
+  `count_tokens`) carry **no tools** → eligibility = Opus + tools present.
+- Stable conversation id: header `x-claude-code-session-id`.
+- Reminders arrive as separate `<system-reminder>` text blocks; the message list can contain a
+  `system`-role entry after the last user message; tool loops are user messages with `tool_result`.
+- Body fields: `thinking {type, display}`, `output_config`, `context_management`, `safeguards`,
+  `metadata.user_id`. Downgrade rejections are handled by the one-shot retry with the original model.
+- Open: what the non-reminder injected blocks are (command wrappers around `/compact` etc.). The
+  proxy treats any text block starting with an XML-style tag as injected and logs tag names in
+  `injected` — confirm from `logs/routing.jsonl`.
 
 ### Tests (`bun test`)
 
 - Turn classification on fixture bodies: fresh, tool-result continuation, and mixed.
 - Override parsing and tag stripping.
-- Threshold rule against the Python `sweep.py` output for the same probabilities.
+- Threshold rule against the Python `training/sweep.py` output for the same probabilities.
 - Fail-open behavior when the sidecar is down or times out.
 - Streaming pass-through against a mock upstream.
 
@@ -132,10 +141,10 @@ fresh prompts.
 Real routing logs plus the user's corrections make better training data than synthetic prompts.
 
 - [ ] `bun run review`: walk recent decisions and mark each one `ok`, `too weak` or `too strong`.
-  Also count every `!opus` override as a "too weak" signal.
+  Also count every `>opus` override as a "too weak" signal.
 - [ ] Export the reviewed rows to the training format, run the scrub, retrain on Kaggle, and evaluate.
-- [ ] **Eval gate.** A new checkpoint replaces v1 only if, at `c = 0.9` on the frozen test set,
-  its too-weak rate is ≤ 3.4% **and** its Opus share is ≤ 33%. It also has to do no worse on a
+- [ ] **Eval gate.** A new checkpoint replaces v1 only if, at `c = 0.8` on the frozen test set,
+  its too-weak rate is ≤ 4.4% **and** its Opus share is ≤ 20%. It also has to do no worse on a
   fresh slice of reviewed real prompts.
 - [ ] Also track how many real prompts have been reviewed. Once there are ~500, they become a second,
   more trustworthy test set.
