@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────
+# PRIVATE DATA — real Claude Code prompts and routing logs.
+# Never commit these. See CLAUDE.md → Ground rules.
+# ─────────────────────────────────────────────────────────────
+data/
+logs/
+*.jsonl
+kaggle/*
+!kaggle/train_router.ipynb
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─────────────────────────────────────────────────────────────
+# Large artifacts — models and downloads
+# ─────────────────────────────────────────────────────────────
+checkpoints/
+*.safetensors
+*.onnx
+*.bin
+*.pt
+*.zip
+*.crdownload
+
+# Third-party clone (its own git repo)
+laya/
+
+# ─────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+
+# ─────────────────────────────────────────────────────────────
+# Bun / TypeScript (proxy/)
+# ─────────────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# ─────────────────────────────────────────────────────────────
+# Logs and temp files
+# ─────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.swp
+
+# ─────────────────────────────────────────────────────────────
+# OS / editors
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+
+# Claude Code local settings
+.claude/settings.local.json
