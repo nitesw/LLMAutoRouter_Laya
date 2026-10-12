@@ -19,6 +19,7 @@ type Stats = {
   byModel: Counts;
   byModelAllRequests: Counts;
   overrides: number;
+  passthrough: number;
   fallbacks: number;
   retries: number;
   layaMs: { p50: number | null; p95: number | null };
@@ -26,7 +27,7 @@ type Stats = {
   daily: ({ day: string } & Counts)[];
   feedback: { labeled: number; agreed: number };
   recent: {
-    id: string; ts: string; model: Tier; override: boolean; fallback: boolean;
+    id: string; ts: string; model: Tier; override: boolean; passthrough: boolean; fallback: boolean;
     opus: number | null; probs: Record<string, number> | null; layaMs: number | null; fallbackReason: string | null;
     prompt: string; prevAssistant: string; state: string; feedback: Tier | null; tags: Tag[];
   }[];
@@ -155,6 +156,7 @@ function DetailSheet({ r, onClose, onSaved }: { r: Recent; onClose: () => void; 
         <Section title="Why was it routed here?">
           <div className="space-y-1 text-sm">
             {r.override && <div>Forced by an override tag, Laya was not asked.</div>}
+            {r.passthrough && <div>Sent to the model you picked in Claude Code (/model). Not routed.</div>}
             {r.fallback && <div>Laya failed ({r.fallbackReason}), so the fallback tier was used.</div>}
             {r.probs && (
               <div className="tabular-nums text-[var(--muted)]">
@@ -257,6 +259,7 @@ export function App() {
           {stats.daily.length ? <Daily days={stats.daily} /> : <p className="text-sm text-[var(--muted)]">No data yet.</p>}
           <div className="mt-4 space-y-1 border-t border-[var(--border)] pt-3 text-sm text-[var(--muted)]">
             <div>Overrides (&gt;opus etc.): <span className="text-[var(--foreground)]">{stats.overrides}</span></div>
+            <div>Not routed (/model not Opus): <span className="text-[var(--foreground)]">{stats.passthrough ?? 0}</span></div>
             <div>Fallbacks to Opus: <span className="text-[var(--foreground)]">{stats.fallbacks}</span></div>
             <div>Retries after 400: <span className="text-[var(--foreground)]">{stats.retries}</span></div>
             <div>
@@ -276,7 +279,7 @@ export function App() {
                   <span className="w-14 shrink-0">{r.model}</span>
                   <span className="min-w-0 flex-1 truncate" title={r.prompt}>{r.prompt}</span>
                   <span className="shrink-0 tabular-nums text-xs text-[var(--muted)]">
-                    {r.override ? "override" : r.fallback ? "fallback" : r.opus == null ? "" : `P(opus) ${r.opus.toFixed(2)}`}
+                    {r.passthrough ? "your pick" : r.override ? "override" : r.fallback ? "fallback" : r.opus == null ? "" : `P(opus) ${r.opus.toFixed(2)}`}
                   </span>
                   {r.tags.length > 0 && <span className="shrink-0 text-xs text-[var(--muted)]" title={r.tags.join(", ")}>{r.tags.length} tag{r.tags.length > 1 ? "s" : ""}</span>}
                   <span onClick={(e) => e.stopPropagation()}><FeedbackButtons id={r.id} value={r.feedback} onSaved={load} /></span>

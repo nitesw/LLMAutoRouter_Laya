@@ -87,6 +87,13 @@ test("background requests (no tools) pass through untouched", async () => {
   expect(upstreamCalls[0].model).toBe("claude-opus-5-5");
 });
 
+test("a prompt for a model you picked (not Opus) is logged but never rerouted", async () => {
+  layaProbs = { none: 0, haiku: 0, sonnet: 0, opus: 1 }; // must not be consulted
+  await call({ ...fresh("fix the typo"), model: "claude-sonnet-5-5" }, "s9");
+  expect(upstreamCalls[0].model).toBe("claude-sonnet-5-5");
+  expect(lastLog()).toMatchObject({ passthrough: true, turnType: "fresh", finalModel: "claude-sonnet-5-5", promptPreview: "fix the typo" });
+});
+
 test("a slow (cold) sidecar is waited for: Laya still decides", async () => {
   layaDelayMs = 500;
   await call(fresh("fix the typo"), "s5");

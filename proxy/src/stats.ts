@@ -58,6 +58,7 @@ export function stats() {
     byModel: count(fresh),
     byModelAllRequests: count(rows),
     overrides: fresh.filter((r) => r.override).length,
+    passthrough: fresh.filter((r) => r.passthrough).length,
     fallbacks: rows.filter((r) => r.fallbackReason && r.turnType === "fresh").length,
     retries: rows.filter((r) => r.retried).length,
     layaMs: { p50: pct(laya, 0.5), p95: pct(laya, 0.95) },
@@ -68,7 +69,7 @@ export function stats() {
       agreed: fresh.filter((r) => feedback.get(idOf(r))?.tier === tierOf(r.finalModel)).length,
     },
     recent: fresh.slice(-200).reverse().map((r) => ({
-      id: idOf(r), ts: r.ts, model: tierOf(r.finalModel), override: !!r.override, fallback: !!r.fallbackReason,
+      id: idOf(r), ts: r.ts, model: tierOf(r.finalModel), override: !!r.override, passthrough: !!r.passthrough, fallback: !!r.fallbackReason,
       opus: r.probs?.opus ?? null, probs: r.probs ?? null, layaMs: r.layaMs ?? null, fallbackReason: r.fallbackReason ?? null,
       prompt: r.promptPreview ?? "", prevAssistant: r.prevAssistant ?? "", state: r.state ?? "", feedback: feedback.get(idOf(r))?.tier ?? null, tags: feedback.get(idOf(r))?.tags ?? [],
     })),

@@ -17,6 +17,10 @@ async function handleMessages(request: Request): Promise<Response> {
   if (!d.eligible) {
     const res = await sendUpstream(request, raw);
     if (RECORD) record(request, body, res.status);
+    if (d.observed) {
+      const { eligible, observed, ...rest } = d;
+      logDecision({ id: crypto.randomUUID(), ...rest, passthrough: true, originalModel, finalModel: originalModel, status: res.status });
+    }
     return relay(res);
   }
 
@@ -54,7 +58,8 @@ async function handle(request: Request): Promise<Response> {
 export const app = new Elysia().all("*", ({ request }) => handle(request), { parse: "none" });
 
 if (import.meta.main) {
-  app.listen(PORT);
+  // idleTimeout 0: Anthropic streams can go silent for minutes (advisor, long thinking); Bun's default closes them.
+  app.listen({ port: PORT, idleTimeout: 0 });
   warmUp();
   console.log(`router proxy on http://localhost:${PORT}  threshold ${THRESHOLD}${RECORD ? "  (recording shapes)" : ""}`);
 }

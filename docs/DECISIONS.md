@@ -82,3 +82,14 @@ never Opus by default. A slow or cold Laya is not a failure.
 The router under-uses Haiku because the original labels lean toward Sonnet. Instead of more
 synthetic data, the user labels real prompts from the dashboard (`H / S / O`). The next retrain
 waits for ~150–200 clicks. Acknowledgement routing stays an open problem (`docs/PLAN.md`).
+
+## 18. Never close quiet streams
+"API Error: Connection lost mid-response" during Advising was the proxy, not Anthropic. The response
+stream goes silent while the advisor or a long thinking step runs, and Bun's server closed the
+connection after ~30 s of no bytes (reproduced with a mock upstream). The proxy now listens with
+`idleTimeout: 0`. The advisor and any other request content are forwarded untouched, as before.
+
+## 19. Your own model choice is logged, never rerouted
+Only Opus main-loop requests are routed. When Claude Code asks for Sonnet or Haiku (you picked it
+with `/model`), the request goes through unchanged, but the fresh prompt is still logged with
+`passthrough: true` so it shows on the dashboard ("your pick") and can get feedback clicks.

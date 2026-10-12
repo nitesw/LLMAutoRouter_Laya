@@ -7,6 +7,8 @@ import { classifyTurn, editFirstTyped, formatState, injectedTags, lastAssistantT
 
 export type Decision = {
   eligible: boolean;
+  /** Main-loop prompt for a model you picked yourself (not Opus): logged for the dashboard, not routed. */
+  observed?: boolean;
   convKey?: string;
   turnType?: "fresh" | "continuation";
   override?: Tier | null;
@@ -20,10 +22,14 @@ export type Decision = {
   prevAssistant?: string;
 };
 
-/** Only the main agent loop is routed: Opus requests that carry tools. Background calls pass through. */
+/** The main agent loop: requests that carry tools. Background calls (no tools) pass through unlogged. */
+export function isMainLoop(path: string, body: any): boolean {
+  return path === "/v1/messages" && Array.isArray(body?.tools) && body.tools.length > 0 && Array.isArray(body?.messages);
+}
+
+/** Only Opus main-loop requests are routed; a model you chose yourself is respected. */
 export function isEligible(path: string, body: any): boolean {
-  return path === "/v1/messages" && body?.model === MODELS.opus
-    && Array.isArray(body?.tools) && body.tools.length > 0 && Array.isArray(body?.messages);
+  return isMainLoop(path, body) && body?.model === MODELS.opus;
 }
 
 /** Decide the tier for a request; mutates body (strips an override tag). Never throws. */
@@ -32,7 +38,9 @@ const BACKGROUND = /^(\[SUGGESTION MODE:|The user stepped away and is coming bac
 
 export async function decide(req: Request, body: any): Promise<Decision> {
   touchKeepWarm();
-  if (!isEligible(new URL(req.url).pathname, body)) return { eligible: false };
+  const path = new URL(req.url).pathname;
+  if (!isMainLoop(path, body)) return { eligible: false };
+  if (!isEligible(path, body)) return observe(body);
   const convKey = conversationKey(req, body);
   const turn = classifyTurn(body.messages);
   const base = { eligible: true, convKey, injected: injectedTags(body.messages) };
@@ -64,4 +72,12 @@ export async function decide(req: Request, body: any): Promise<Decision> {
     return { ...base, turnType: "fresh", override: null, probs: null, tier: FALLBACK_TIER, layaMs: Math.round(performance.now() - t0),
       fallbackReason: `laya: ${(e as Error).message}`, promptPreview: preview, state, prevAssistant };
   }
+}
+
+/** Record a fresh prompt sent to a non-Opus model without touching it. Continuations and background prompts are skipped. */
+function observe(body: any): Decision {
+  const turn = classifyTurn(body.messages);
+  if (turn.kind !== "fresh" || BACKGROUND.test(turn.prompt)) return { eligible: false };
+  return { eligible: false, observed: true, turnType: "fresh", promptPreview: turn.prompt.slice(0, 300),
+    state: formatState(turn.prev, turn.prompt), prevAssistant: lastAssistantText(body.messages, turn.index).slice(0, 300) };
 }
